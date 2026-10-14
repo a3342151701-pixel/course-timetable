@@ -896,8 +896,7 @@
       if (!button) return;
       var act = button.dataset.act;
       moreMenu.hidden = true;
-      if (act === 'rollcall') { window.open('rollcall.html', '_blank', 'noopener'); }
-      else if (act === 'tpl-grid') { Excel.downloadTemplateGrid(); toast('已下载网格型模板'); }
+      if (act === 'tpl-grid') { Excel.downloadTemplateGrid(); toast('已下载网格型模板'); }
       else if (act === 'tpl-list') { Excel.downloadTemplateList(); toast('已下载列表型模板'); }
       else if (act === 'backup') { Excel.exportJson(); toast('已导出 JSON 备份'); }
       else if (act === 'restore') { $('#fileJson').click(); }

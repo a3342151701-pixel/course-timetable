@@ -1,6 +1,6 @@
 /*!
  * sheet.js — 表格文件读取（Excel / CSV → 二维数组）
- * 课表页和点名页共用：把上传的文件读成二维数组，处理合并单元格和 CSV 编码。
+ * 把上传的文件读成二维数组，处理合并单元格和 CSV 编码。
  * 无构建依赖，直接以普通 script 加载，暴露全局 Sheet。
  * 依赖 vendor/xlsx.full.min.js（SheetJS，本地内置，离线可用）。
  */
@@ -88,10 +88,7 @@
   }
 
   global.Sheet = {
-    trim: trim,
     readWorkbook: readWorkbook,
-    worksheetToAoa: worksheetToAoa,
-    decodeText: decodeText,
-    readCsvText: readCsvText
+    worksheetToAoa: worksheetToAoa
   };
 })(window);

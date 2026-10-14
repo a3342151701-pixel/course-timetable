@@ -235,7 +235,7 @@
 
   /* -------------------------------------------------------- 表格 -> 二维数组 */
 
-  /* 文件读取（Excel / CSV → 二维数组）由 js/sheet.js 提供，课表页和点名页共用 */
+  /* 文件读取（Excel / CSV → 二维数组）由 js/sheet.js 提供 */
   var readWorkbook = Sheet.readWorkbook;
   var worksheetToAoa = Sheet.worksheetToAoa;
 
