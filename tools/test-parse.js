@@ -1,0 +1,227 @@
+/*!
+ * tools/test-parse.js — 无浏览器环境下验证 store.js / excel.js 的解析逻辑
+ * 运行：node tools/test-parse.js
+ */
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+global.window = global;
+global.XLSX = require('../vendor/xlsx.full.min.js');
+global.localStorage = {
+  _data: {},
+  getItem(key) { return Object.prototype.hasOwnProperty.call(this._data, key) ? this._data[key] : null; },
+  setItem(key, value) { this._data[key] = String(value); },
+  removeItem(key) { delete this._data[key]; }
+};
+
+require('../js/store.js');
+require('../js/excel.js');
+
+const Store = global.Store;
+const Excel = global.Excel;
+
+let passed = 0;
+let failed = 0;
+
+function check(label, actual, expected) {
+  const ok = JSON.stringify(actual) === JSON.stringify(expected);
+  if (ok) {
+    passed++;
+    console.log('  ok  ' + label);
+  } else {
+    failed++;
+    console.log('  FAIL ' + label + '\n        期望: ' + JSON.stringify(expected) + '\n        实际: ' + JSON.stringify(actual));
+  }
+}
+
+function section(title) {
+  console.log('\n== ' + title + ' ==');
+}
+
+/* ---------------------------------------------------------------- 周次 */
+
+section('周次解析');
+check('1-16', Store.parseWeeks('1-16', 16).weeks.length, 16);
+check('1-16 显示', Store.parseWeeks('1-16', 16).text, '1-16');
+check('1-8,10-16 显示', Store.parseWeeks('1-8,10-16', 16).text, '1-8,10-16');
+check('单周', Store.parseWeeks('1-16单周', 16).weeks, [1, 3, 5, 7, 9, 11, 13, 15]);
+check('双周显示', Store.parseWeeks('2-16双周', 16).text, '1-16双周');
+check('中文数字', Store.parseWeeks('第一至十六周', 16).weeks.length, 16);
+check('顿号分隔', Store.parseWeeks('1、3、5周', 16).weeks, [1, 3, 5]);
+check('空值=全部', Store.parseWeeks('', 16).all, true);
+check('全部', Store.parseWeeks('全部', 16).all, true);
+check('只有单周', Store.parseWeeks('单周', 16).weeks, [1, 3, 5, 7, 9, 11, 13, 15]);
+check('排序去重', Store.parseWeeks('5,1,5,3', 16).weeks, [1, 3, 5]);
+check('局部双周显示', Store.parseWeeks('1-8双周', 16).text, '1-8双周');
+check('局部双周周次', Store.parseWeeks('1-8双周', 16).weeks, [2, 4, 6, 8]);
+
+/* ------------------------------------------------------------ 单元格解析 */
+
+section('单元格文本解析');
+const cases = [
+  ['高等数学\n张伟\n三教201', { name: '高等数学', teacher: '张伟', location: '三教201', weeks: '' }],
+  ['英语听说@语音室2', { name: '英语听说', teacher: '', location: '语音室2', weeks: '' }],
+  ['编译原理\n(三教512)', { name: '编译原理', teacher: '', location: '三教512', weeks: '' }],
+  ['计算机网络\n李强 教三401', { name: '计算机网络', teacher: '李强', location: '教三401', weeks: '' }],
+  ['大学物理\n刘洋\n理科楼402\n1-16单周', { name: '大学物理', teacher: '刘洋', location: '理科楼402', weeks: '1-16单周' }],
+  ['形势与政策\n直播课', { name: '形势与政策', teacher: '', location: '', weeks: '' }],
+  ['程序设计 王强 机房A302', { name: '程序设计', teacher: '王强', location: '机房A302', weeks: '' }],
+  ['大学英语\nLinda\n外语楼105', { name: '大学英语', teacher: 'Linda', location: '外语楼105', weeks: '' }],
+  ['学术英语写作\nSmith\n外语楼206', { name: '学术英语写作', teacher: 'Smith', location: '外语楼206', weeks: '' }]
+];
+cases.forEach(([input, expected]) => {
+  const parsed = Excel.parseCellText(input);
+  check(
+    '解析「' + input.replace(/\n/g, '/') + '」',
+    { name: parsed.name, teacher: parsed.teacher, location: parsed.location, weeks: parsed.weeks },
+    expected
+  );
+});
+
+section('星期 / 节次解析');
+check('星期一', Excel.parseWeekday('星期一'), 1);
+check('周日', Excel.parseWeekday('周日'), 7);
+check('周天', Excel.parseWeekday('周天'), 7);
+check('Monday', Excel.parseWeekday('Monday'), 1);
+check('Sun', Excel.parseWeekday('Sun'), 7);
+check('周一,周三', Excel.parseWeekdayList('周一,周三'), [1, 3]);
+check('1、3', Excel.parseWeekdayList('1、3'), [1, 3]);
+check('第1-2节', Excel.parsePeriodRange('第1-2节'), { start: 1, end: 2 });
+check('3、4节', Excel.parsePeriodRange('3、4节'), { start: 3, end: 4 });
+check('第一节', Excel.parsePeriodRange('第一节'), { start: 1, end: 1 });
+check('纯数字 5', Excel.parsePeriodRange('5'), { start: 5, end: 5 });
+check('时间不当作节次', Excel.parsePeriodRange('08:00-08:45'), null);
+
+/* --------------------------------------------------------- 整表导入 */
+
+const config = Store.state.config;
+
+function loadWorkbook(file) {
+  const buffer = fs.readFileSync(file);
+  if (/\.csv$/i.test(file)) {
+    let text = buffer.toString('utf8');
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    return XLSX.read(text, { type: 'string', raw: true });
+  }
+  return XLSX.read(buffer, { type: 'buffer' });
+}
+
+function parseSample(file, sheetName) {
+  const workbook = loadWorkbook(path.join(__dirname, '..', 'samples', file));
+  return Excel.parseSheet(workbook, sheetName || workbook.SheetNames[0], { config });
+}
+
+function summary(courses) {
+  return courses.map((c) => [Store.DAY_LABELS[c.day - 1], c.startPeriod + (c.endPeriod > c.startPeriod ? '-' + c.endPeriod : ''), c.name].join(' '));
+}
+
+section('示例-网格型课表.xlsx（含标题行、合并单元格、单双周）');
+const grid = parseSample('示例-网格型课表.xlsx');
+check('识别模式', grid.mode, 'grid');
+check('课程数量', grid.courses.length, 14);
+check('课程清单', summary(grid.courses), [
+  '周一 1-2 高等数学',
+  '周一 3-4 大学英语',
+  '周一 7-8 体育（羽毛球）',
+  '周二 1-2 线性代数',
+  '周二 5-6 程序设计基础',
+  '周三 1-2 大学物理',
+  '周三 7-8 中国近现代史纲要',
+  '周四 1-2 数据结构',
+  '周四 5-6 马克思主义基本原理',
+  '周五 1-2 高等数学',
+  '周五 3-4 大学英语',
+  '周五 5-6 概率论与数理统计',
+  '周六 5-6 创新创业实践',
+  '周日 9-10 晚自习'
+]);
+check('单周课周次', grid.courses[5].weeks, '1-16单周');
+check('双周课周次', grid.courses[11].weeks, '1-16双周');
+check('地点解析', grid.courses[0].location, '三教201');
+check('教师解析', grid.courses[0].teacher, '张伟');
+
+section('示例-网格型简版.xlsx（无时间列、数字节次、@写法）');
+const simple = parseSample('示例-网格型简版.xlsx');
+check('识别模式', simple.mode, 'grid');
+check('课程清单', summary(simple.courses), [
+  '周一 1-2 英语听说',
+  '周一 4 离散数学',
+  '周二 1-2 计算机网络',
+  '周二 5-6 羽毛球',
+  '周三 3-5 编译原理',
+  '周四 3-5 编译原理',
+  '周五 4 形势与政策',
+  '周六 5-6 数学建模竞赛培训'
+]);
+check('@ 写法地点', simple.courses[0].location, '语音室2');
+
+section('示例-列表型课表.xlsx / 课程列表');
+const list = parseSample('示例-列表型课表.xlsx', '课程列表');
+check('识别模式', list.mode, 'list');
+check('课程数量', list.courses.length, 11);
+check('课程清单', summary(list.courses), [
+  '周一 1-2 高等数学',
+  '周一 3-4 大学英语',
+  '周二 3 大学英语（口语）',
+  '周三 1-2 大学物理',
+  '周三 7-8 体育（羽毛球）',
+  '周四 1-2 数据结构',
+  '周四 5-6 马克思主义基本原理',
+  '周五 1-2 计算机组成原理',
+  '周五 3-4 大学英语',
+  '周五 5 概率论与数理统计',
+  '周六 5-6 创新创业实践'
+]);
+check('「周一,周五」拆成两条', list.courses.filter((c) => c.name === '大学英语').length, 2);
+check('周次保留', list.courses.filter((c) => c.name === '大学物理')[0].weeks, '1-16单周');
+check('多段周次保留', list.courses.filter((c) => c.name === '计算机组成原理')[0].weeks, '1-8,10-16');
+check('备注保留', list.courses.filter((c) => c.name === '高等数学')[0].note, '带计算器');
+
+section('示例-列表型课表.xlsx / 分列写法');
+const list2 = parseSample('示例-列表型课表.xlsx', '分列写法');
+check('课程清单', summary(list2.courses), [
+  '周二 1-2 线性代数',
+  '周二 5-6 程序设计基础',
+  '周三 7-8 中国近现代史纲要',
+  '周四 3-4 学术英语写作',
+  '周日 1-2 军事理论'
+]);
+
+section('示例-列表型课表.csv');
+const csv = parseSample('示例-列表型课表.csv');
+check('识别模式', csv.mode, 'list');
+check('课程清单', summary(csv.courses), [
+  '周一 5-6 大学语文',
+  '周三 1-2 线性代数',
+  '周五 7-8 体育（篮球）'
+]);
+
+section('导出后可再次导入（往返一致性）');
+const source = grid.courses.map((c) => Store.normalizeCourse(Object.assign({}, c, { id: undefined })));
+const built = Excel.buildGridAoa(source, config);
+const backWb = XLSX.read(XLSX.write({ SheetNames: ['课程表'], Sheets: { '课程表': (() => {
+  const ws = XLSX.utils.aoa_to_sheet(built.aoa);
+  ws['!merges'] = built.merges;
+  return ws;
+})() } }, { bookType: 'xlsx', type: 'buffer' }), { type: 'buffer' });
+const back = Excel.parseSheet(backWb, '课程表', { config });
+check('往返课程数量一致', back.courses.length, grid.courses.length);
+check('往返课程清单一致', summary(back.courses), summary(grid.courses));
+
+section('冲突检测');
+const conflictPool = [
+  Store.normalizeCourse({ name: 'A', day: 1, startPeriod: 1, endPeriod: 2, weeks: '1-16' }),
+  Store.normalizeCourse({ name: 'B', day: 1, startPeriod: 2, endPeriod: 3, weeks: '5-10' }),
+  Store.normalizeCourse({ name: 'C', day: 1, startPeriod: 5, endPeriod: 6, weeks: '1-16' })
+];
+check('节次重叠且周次相交', Object.keys(Store.findConflicts(conflictPool, 16)).length, 2);
+const noConflict = [
+  Store.normalizeCourse({ name: 'A', day: 1, startPeriod: 1, endPeriod: 2, weeks: '1-4' }),
+  Store.normalizeCourse({ name: 'B', day: 1, startPeriod: 1, endPeriod: 2, weeks: '5-8' })
+];
+check('周次不相交不算冲突', Object.keys(Store.findConflicts(noConflict, 16)).length, 0);
+
+console.log('\n通过 ' + passed + ' 项，失败 ' + failed + ' 项');
+process.exit(failed ? 1 : 0);

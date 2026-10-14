@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="面向学生的课程表：自由编辑课程，导入 Excel 课表，每门课自动配色。">
+<title>我的课程表</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="appbar">
+  <div class="appbar-row">
+    <h1 class="brand"><span class="brand-dot"></span>我的课程表</h1>
+
+    <div class="week-box">
+      <button class="icon-btn" id="weekPrev" type="button" title="上一周">‹</button>
+      <div class="week-slider">
+        <input type="range" id="weekRange" min="1" max="16" step="1" value="1" aria-label="当前周次">
+        <span class="week-label" id="weekLabel">第 1 周</span>
+      </div>
+      <button class="icon-btn" id="weekNext" type="button" title="下一周">›</button>
+      <label class="check"><input type="checkbox" id="highlightWeek" checked><span>高亮本周</span></label>
+    </div>
+
+    <div class="toolbar">
+      <div class="segmented" id="viewSwitch" role="tablist">
+        <button type="button" data-view="grid" class="is-active">课表</button>
+        <button type="button" data-view="list">列表</button>
+      </div>
+      <button class="btn primary" id="btnAdd" type="button">添加课程</button>
+      <button class="btn" id="btnImport" type="button">导入 Excel</button>
+      <button class="btn" id="btnExport" type="button">导出 Excel</button>
+      <div class="dropdown">
+        <button class="btn" id="btnMore" type="button" aria-haspopup="true" aria-expanded="false">更多</button>
+        <div class="dropdown-menu" id="moreMenu" hidden>
+          <button type="button" data-act="tpl-grid">下载网格型模板</button>
+          <button type="button" data-act="tpl-list">下载列表型模板</button>
+          <hr>
+          <button type="button" data-act="backup">导出 JSON 备份</button>
+          <button type="button" data-act="restore">导入 JSON 备份</button>
+          <hr>
+          <button type="button" data-act="recolor">重新自动配色</button>
+          <button type="button" data-act="settings">节次与周次设置</button>
+          <button type="button" data-act="clear" class="is-danger">清空全部课程</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="legend" id="legend"></div>
+
+<main>
+  <section id="viewGrid" class="view">
+    <div class="grid-wrap">
+      <div class="tt-grid" id="ttGrid"></div>
+    </div>
+    <p class="hint">点击空白格子新增课程，点击已有课程可以修改、删除或复制到其他星期。顶部滑块用来切换当前周次，非本周的课程会自动变淡。</p>
+  </section>
+
+  <section id="viewList" class="view" hidden>
+    <div class="list-toolbar">
+      <input type="search" id="listSearch" class="input" placeholder="搜索课程名称、教师或地点">
+      <label class="inline-field">星期
+        <select id="listDay">
+          <option value="0">全部</option>
+          <option value="1">周一</option>
+          <option value="2">周二</option>
+          <option value="3">周三</option>
+          <option value="4">周四</option>
+          <option value="5">周五</option>
+          <option value="6">周六</option>
+          <option value="7">周日</option>
+        </select>
+      </label>
+      <label class="inline-field">排序
+        <select id="listSort">
+          <option value="time">按上课时间</option>
+          <option value="name">按课程名称</option>
+          <option value="weeks">按周次</option>
+        </select>
+      </label>
+      <span class="list-count" id="listCount"></span>
+    </div>
+    <div class="list-wrap">
+      <table class="course-table" id="courseTable">
+        <thead>
+          <tr>
+            <th>课程</th>
+            <th>星期</th>
+            <th>节次</th>
+            <th>周次</th>
+            <th>地点</th>
+            <th>教师</th>
+            <th>备注</th>
+            <th class="col-op">操作</th>
+          </tr>
+        </thead>
+        <tbody id="courseTbody"></tbody>
+      </table>
+      <p class="empty-hint" id="listEmpty" hidden>没有符合条件的课程。</p>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <span id="stats"></span>
+  <span class="footer-tip">数据保存在本机浏览器中，换电脑或清理浏览器数据前请先导出 JSON 备份。</span>
+</footer>
+
+<input type="file" id="fileExcel" accept=".xlsx,.xls,.xlsm,.csv" hidden>
+<input type="file" id="fileJson" accept=".json,application/json" hidden>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<aside class="drawer" id="drawer" hidden aria-hidden="true" aria-labelledby="drawerTitle">
+  <div class="drawer-head">
+    <h2 id="drawerTitle">编辑课程</h2>
+    <button class="icon-btn" id="drawerClose" type="button" title="关闭">×</button>
+  </div>
+  <div class="drawer-body">
+    <form id="courseForm" autocomplete="off">
+      <label class="field">
+        <span class="field-label">课程名称 <em>*</em></span>
+        <input class="input" id="fName" placeholder="例如：高等数学">
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">星期</span>
+          <select class="input" id="fDay"></select>
+        </label>
+        <label class="field">
+          <span class="field-label">开始节次</span>
+          <select class="input" id="fStart"></select>
+        </label>
+        <label class="field">
+          <span class="field-label">结束节次</span>
+          <select class="input" id="fEnd"></select>
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="field-label">上课周次</span>
+        <input class="input" id="fWeeks" placeholder="1-16 / 1-8,10-16 / 1-16单周">
+      </label>
+      <div class="quick-row" id="weekQuick">
+        <button type="button" data-week="全部">全部</button>
+        <button type="button" data-week="odd">单周</button>
+        <button type="button" data-week="even">双周</button>
+        <button type="button" data-week="first">1-8 周</button>
+        <button type="button" data-week="last">9-16 周</button>
+      </div>
+      <p class="field-hint" id="weeksHint"></p>
+
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">上课地点</span>
+          <input class="input" id="fLocation" placeholder="例如：三教 201">
+        </label>
+        <label class="field">
+          <span class="field-label">任课教师</span>
+          <input class="input" id="fTeacher" placeholder="例如：张老师">
+        </label>
+      </div>
+
+      <div class="field">
+        <span class="field-label">颜色</span>
+        <div class="color-row">
+          <input type="color" id="fColor" value="#D6E2FB" title="选择颜色">
+          <button class="mini" id="fColorAuto" type="button">自动配色</button>
+          <div class="swatches" id="fSwatches"></div>
+        </div>
+      </div>
+
+      <label class="field">
+        <span class="field-label">备注</span>
+        <textarea class="input" id="fNote" rows="2" placeholder="例如：带计算器 / 分 A、B 班"></textarea>
+      </label>
+
+      <div class="field">
+        <span class="field-label">复制到其他星期（保存时一并创建）</span>
+        <div class="day-checks" id="fCopyDays"></div>
+      </div>
+    </form>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn danger" id="btnDeleteCourse" type="button">删除</button>
+    <span class="spacer"></span>
+    <button class="btn" id="btnCancelCourse" type="button">取消</button>
+    <button class="btn primary" id="btnSaveCourse" type="button">保存</button>
+  </div>
+</aside>
+
+<div class="modal-mask" id="modalMask" hidden>
+  <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="js/store.js"></script>
+<script src="js/excel.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

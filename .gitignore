@@ -1,0 +1,16 @@
+# 依赖与临时文件
+node_modules/
+npm-debug.log*
+*.log
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 本地导出与备份（不影响源码）
+课程表-*.xlsx
+课程列表-*.xlsx
+课程表备份-*.json
