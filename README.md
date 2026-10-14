@@ -3,19 +3,26 @@
 一个面向学生的网页课程表：**自己排课、导入 Excel、每门课自动配色**。
 纯前端、无需安装、无需联网，双击 `index.html` 就能用。
 
+**在线版：<https://a3342151701-pixel.github.io/course-timetable/>**（手机、平板、其他电脑直接打开即可，不用装任何东西）
+
 ---
 
 ## 快速开始
 
-1. 双击打开 [index.html](index.html)（推荐 Chrome / Edge）。
+1. 双击打开 [index.html](index.html)（推荐 Chrome / Edge），或者直接打开上面的在线版。
 2. 第一次打开会自带一份示例课表，可以直接改成自己的；点右上角「更多 → 清空全部课程」就能清空。
 3. 想导入现成的教务系统课表，点「导入 Excel」，选文件后确认即可。
 
 如果需要通过 http 访问（某些浏览器对本地文件的限制较严），可以在项目目录下执行：
 
 ```bash
-node tools/serve.js      # 然后打开 http://localhost:5173
+node tools/serve.js              # 本机 http://localhost:5173
+node tools/serve.js --local      # 只允许本机访问
 ```
+
+`serve.js` 默认监听 `0.0.0.0`，所以启动后会打印局域网地址（如 `http://192.168.1.5:5173`），
+同一 Wi-Fi / 同一校园网下的手机、平板等设备可以直接打开这个地址。
+Windows 首次运行会弹出防火墙询问，勾选「专用网络」并允许即可。
 
 ---
 
@@ -124,6 +131,20 @@ node tools/serve.js      # 然后打开 http://localhost:5173
 
 ---
 
+## 发布与更新（GitHub Pages）
+
+在线版 <https://a3342151701-pixel.github.io/course-timetable/> 由仓库
+<https://github.com/a3342151701-pixel/course-timetable> 的 `main` 分支发布。
+改完代码后推上去，GitHub 会自动重新构建（大约 1 分钟生效）：
+
+```bash
+git add -A
+git commit -m "说明这次改了什么"
+git push
+```
+
+---
+
 ## 目录结构
 
 ```
@@ -136,7 +157,7 @@ vendor/xlsx.full.min.js    SheetJS（本地内置，离线可用）
 samples/                   示例课表文件
 tools/gen-samples.js       重新生成 samples/ 里的示例文件
 tools/test-parse.js        解析逻辑的无浏览器测试（86 项）
-tools/serve.js             可选的本地预览服务器
+tools/serve.js             可选的本地预览服务器（默认对外开放，便于局域网访问）
 ```
 
 ## 开发与测试
