@@ -147,12 +147,12 @@ const simple = parseSample('示例-网格型简版.xlsx');
 check('识别模式', simple.mode, 'grid');
 check('课程清单', summary(simple.courses), [
   '周一 1-2 英语听说',
-  '周一 4 离散数学',
+  '周一 3-4 离散数学',
   '周二 1-2 计算机网络',
   '周二 5-6 羽毛球',
-  '周三 3-5 编译原理',
-  '周四 3-5 编译原理',
-  '周五 4 形势与政策',
+  '周三 3-6 编译原理',
+  '周四 3-6 编译原理',
+  '周五 3-4 形势与政策',
   '周六 5-6 数学建模竞赛培训'
 ]);
 check('@ 写法地点', simple.courses[0].location, '语音室2');
@@ -164,14 +164,14 @@ check('课程数量', list.courses.length, 11);
 check('课程清单', summary(list.courses), [
   '周一 1-2 高等数学',
   '周一 3-4 大学英语',
-  '周二 3 大学英语（口语）',
+  '周二 3-4 大学英语（口语）',
   '周三 1-2 大学物理',
   '周三 7-8 体育（羽毛球）',
   '周四 1-2 数据结构',
   '周四 5-6 马克思主义基本原理',
   '周五 1-2 计算机组成原理',
   '周五 3-4 大学英语',
-  '周五 5 概率论与数理统计',
+  '周五 5-6 概率论与数理统计',
   '周六 5-6 创新创业实践'
 ]);
 check('「周一,周五」拆成两条', list.courses.filter((c) => c.name === '大学英语').length, 2);
@@ -198,6 +198,35 @@ check('课程清单', summary(csv.courses), [
   '周五 7-8 体育（篮球）'
 ]);
 
+section('课程都按整大节安排（一个大节 = 两节 45 分钟）');
+check('半节（第4节）扩成第3-4节', Store.snapPeriodsToUnits(4, 4, 10), { start: 3, end: 4 });
+check('半节（第1节）扩成第1-2节', Store.snapPeriodsToUnits(1, 1, 10), { start: 1, end: 2 });
+check('奇数节数（第3-5节）扩成第3-6节', Store.snapPeriodsToUnits(3, 5, 10), { start: 3, end: 6 });
+check('整大节（第7-8节）保持不变', Store.snapPeriodsToUnits(7, 8, 10), { start: 7, end: 8 });
+check('超出课表范围时截断', Store.snapPeriodsToUnits(9, 40, 10), { start: 9, end: 10 });
+check('节次数量为奇数时不会排到最后一节', Store.snapPeriodsToUnits(9, 9, 9), { start: 7, end: 8 });
+check('大节数量按整大节计算', [Store.unitCount(Array(10)), Store.unitCount(Array(9))], [5, 4]);
+check('第4节属于第2大节', Store.unitOf(4), 2);
+check('第9节属于第5大节', Store.unitOf(9), 5);
+check('手动添加的单节课自动变成整大节', (function () {
+  const added = Store.addCourse({ name: '测试课程', day: 1, startPeriod: 4, endPeriod: 4 }, { save: false });
+  const range = [added.startPeriod, added.endPeriod];
+  Store.removeCourse(added.id, { save: false });
+  return range;
+})(), [3, 4]);
+check('修改课程时也会对齐大节', (function () {
+  const added = Store.addCourse({ name: '测试课程', day: 1, startPeriod: 1, endPeriod: 2 }, { save: false });
+  Store.updateCourse(added.id, { startPeriod: 5, endPeriod: 5 }, { save: false });
+  const range = [Store.getCourse(added.id).startPeriod, Store.getCourse(added.id).endPeriod];
+  Store.removeCourse(added.id, { save: false });
+  return range;
+})(), [5, 6]);
+check('导入的课程全部占整大节',
+  grid.courses.concat(simple.courses, list.courses, list2.courses, csv.courses)
+    .every((c) => (c.startPeriod - 1) % Store.UNIT_SIZE === 0 && c.endPeriod % Store.UNIT_SIZE === 0),
+  true);
+check('半节的课程会给出提示', simple.warnings.some((text) => text.indexOf('大节') >= 0), true);
+
 section('导出后可再次导入（往返一致性）');
 const source = grid.courses.map((c) => Store.normalizeCourse(Object.assign({}, c, { id: undefined })));
 const built = Excel.buildGridAoa(source, config);
@@ -222,6 +251,39 @@ const noConflict = [
   Store.normalizeCourse({ name: 'B', day: 1, startPeriod: 1, endPeriod: 2, weeks: '5-8' })
 ];
 check('周次不相交不算冲突', Object.keys(Store.findConflicts(noConflict, 16)).length, 0);
+
+section('默认作息（大节：两节 45 分钟 + 课间 5 分钟，大节之间 15 分钟）');
+const periods = config.periods;
+function toMinutes(text) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(text || '');
+  return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+}
+function gapAt(index) { return toMinutes(periods[index].start) - toMinutes(periods[index - 1].end); }
+check('第一节 08:00 开始', periods[0].start, '08:00');
+check('最后一节 19:35 结束', periods[periods.length - 1].end, '19:35');
+check('每个节次都是 45 分钟', periods.every((p) => toMinutes(p.end) - toMinutes(p.start) === 45), true);
+check('节次时间递增', periods.every((p, i) => i === 0 || toMinutes(p.start) >= toMinutes(periods[i - 1].end)), true);
+check('一个大节两节课', Store.UNIT_SIZE, 2);
+check('共 5 个大节', periods.length / Store.UNIT_SIZE, 5);
+check('大节内部都是 5 分钟课间', [1, 3, 5, 7, 9].map(gapAt), [5, 5, 5, 5, 5]);
+check('相邻大节之间 15 分钟', [2, 6].map(gapAt), [15, 15]);
+check('午休 11:25 - 14:00', [periods[3].end, periods[4].start], ['11:25', '14:00']);
+check('晚上从 18:00 开始', periods[8].start, '18:00');
+check('第9节属于第5大节', Store.unitOf(9), 5);
+check('第4节属于第2大节', Store.unitOf(4), 2);
+
+section('老版默认作息自动升级');
+const legacyEvening = [
+  ['第1节', '08:00', '08:45'], ['第2节', '08:50', '09:35'],
+  ['第3节', '09:40', '10:25'], ['第4节', '10:30', '11:15'],
+  ['第5节', '14:00', '14:45'], ['第6节', '14:50', '15:35'],
+  ['第7节', '15:40', '16:25'], ['第8节', '16:30', '17:15'],
+  ['第9节', '18:00', '18:45'], ['第10节', '19:00', '19:45']
+].map(([label, start, end]) => ({ label, start, end }));
+check('上一版默认升级为大节作息', Store.mergeConfig({ periods: legacyEvening }).periods[9].end, '19:35');
+check('上一版默认升级后第 3 节 09:50 开始', Store.mergeConfig({ periods: legacyEvening }).periods[2].start, '09:50');
+const customPeriods = [{ label: '第1节', start: '09:00', end: '09:45' }, { label: '第2节', start: '10:00', end: '10:45' }];
+check('用户自定义作息保留', Store.mergeConfig({ periods: customPeriods }).periods, customPeriods);
 
 console.log('\n通过 ' + passed + ' 项，失败 ' + failed + ' 项');
 process.exit(failed ? 1 : 0);

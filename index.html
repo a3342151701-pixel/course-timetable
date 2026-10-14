@@ -56,7 +56,7 @@
     <div class="grid-wrap">
       <div class="tt-grid" id="ttGrid"></div>
     </div>
-    <p class="hint">点击空白格子新增课程，点击已有课程可以修改、删除或复制到其他星期。顶部滑块用来切换当前周次，非本周的课程会自动变淡。</p>
+    <p class="hint">点击空白格子新增课程，点击已有课程可以修改、删除或复制到其他星期。课程按大节安排（一个大节 = 两节 45 分钟的课，如 14:00-15:35），每两节之间画了分隔线。顶部滑块用来切换当前周次，非本周的课程会自动变淡。</p>
   </section>
 
   <section id="viewList" class="view" hidden>
@@ -132,14 +132,15 @@
           <select class="input" id="fDay"></select>
         </label>
         <label class="field">
-          <span class="field-label">开始节次</span>
+          <span class="field-label">开始大节</span>
           <select class="input" id="fStart"></select>
         </label>
         <label class="field">
-          <span class="field-label">结束节次</span>
+          <span class="field-label">结束大节</span>
           <select class="input" id="fEnd"></select>
         </label>
       </div>
+      <p class="field-hint">课程按「大节」安排：一个大节 = 两节 45 分钟的课，所以每门课至少连上两节（例如第 3-4 节）。要跨两个大节就选「开始大节 2 / 结束大节 3」。</p>
 
       <label class="field">
         <span class="field-label">上课周次</span>

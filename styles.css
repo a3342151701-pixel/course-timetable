@@ -389,6 +389,9 @@ main {
   font-size: 12px;
 }
 
+/* 每两节是一个大节，大节之间用一条实线分隔，方便一眼看出「连着上的两节」 */
+.tt-grid .unit-start { border-top: 2px solid var(--border-strong); }
+
 .course {
   position: relative;
   z-index: 2;

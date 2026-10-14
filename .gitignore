@@ -3,6 +3,9 @@ node_modules/
 npm-debug.log*
 *.log
 
+# 本地下载的工具（例如 cloudflared 隧道），不入库
+tools/bin/
+
 # 编辑器与系统
 .vscode/
 .idea/

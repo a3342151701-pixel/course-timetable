@@ -59,6 +59,37 @@
     return Store.courseHasWeek(course, cfg.currentWeek, cfg.totalWeeks);
   }
 
+  /* ------------------------------------------------------------ 大节文本 */
+
+  /* 课程都按「大节」安排：一个大节 = 两节 45 分钟的课。
+     下面两个函数负责把课程占用的节次显示成「第2大节（第3-4节）」这种样子。 */
+
+  function periodRangeText(course, periods) {
+    var startLabel = (periods[course.startPeriod - 1] || {}).label || '第' + course.startPeriod + '节';
+    var endLabel = (periods[course.endPeriod - 1] || {}).label || '第' + course.endPeriod + '节';
+    if (course.endPeriod <= course.startPeriod) return startLabel;
+    var from = /^第(\d+)节$/.exec(startLabel);
+    var to = /^第(\d+)节$/.exec(endLabel);
+    return from && to ? '第' + from[1] + '-' + to[1] + '节' : startLabel + ' - ' + endLabel;
+  }
+
+  function unitRangeText(course, cfg) {
+    var periods = (cfg || config()).periods;
+    var first = Store.unitOf(course.startPeriod);
+    var last = Store.unitOf(course.endPeriod);
+    var unitText = first === last ? '第' + first + '大节' : '第' + first + '-' + last + '大节';
+    return unitText + '（' + periodRangeText(course, periods) + '）';
+  }
+
+  /* 课程上下课时间，如「08:00-09:35」 */
+  function timeRangeText(course, cfg) {
+    var periods = (cfg || config()).periods;
+    var first = periods[course.startPeriod - 1];
+    var last = periods[course.endPeriod - 1];
+    if (!first || !last || !first.start || !last.end) return '';
+    return first.start + '-' + last.end;
+  }
+
   /* ------------------------------------------------------------ 课表网格 */
 
   function renderGrid() {
@@ -89,8 +120,10 @@
 
     periods.forEach(function (period, index) {
       var time = period.start && period.end ? period.start + '-' + period.end : (period.start || period.end || '');
+      /* 每两节是一个大节，大节的第一节加一条分隔线 */
+      var unitStart = index > 0 && index % Store.UNIT_SIZE === 0;
       html.push(
-        '<div class="period" style="grid-row:' + (index + 2) + ';grid-column:1">' +
+        '<div class="period' + (unitStart ? ' unit-start' : '') + '" style="grid-row:' + (index + 2) + ';grid-column:1">' +
           '<b>' + esc(period.label) + '</b>' +
           (time ? '<small>' + esc(time) + '</small>' : '') +
         '</div>'
@@ -99,7 +132,8 @@
 
     days.forEach(function (day, dayIndex) {
       for (var p = 1; p <= total; p++) {
-        html.push('<div class="cell" data-day="' + day + '" data-period="' + p + '" style="grid-row:' + (p + 1) + ';grid-column:' + (dayIndex + 2) + '"></div>');
+        var unitStart = p > 1 && (p - 1) % Store.UNIT_SIZE === 0;
+        html.push('<div class="cell' + (unitStart ? ' unit-start' : '') + '" data-day="' + day + '" data-period="' + p + '" style="grid-row:' + (p + 1) + ';grid-column:' + (dayIndex + 2) + '"></div>');
       }
     });
 
@@ -118,12 +152,14 @@
       var meta = [course.location, course.teacher].filter(Boolean).join(' · ');
       var weeks = (!Store.parseWeeks(course.weeks, cfg.totalWeeks).all) ? weekTextOf(course) : '';
       var conflictList = conflicts[course.id];
+      var title = [course.name, Store.DAY_LABELS[course.day - 1] + ' ' + unitRangeText(course, cfg),
+        timeRangeText(course, cfg), meta, weekTextOf(course)].filter(Boolean).join(' ｜ ');
 
       html.push(
         '<button type="button" class="' + classes.join(' ') + '" data-id="' + esc(course.id) + '"' +
           ' style="grid-row:' + (start + 1) + ' / ' + (end + 2) + ';grid-column:' + (dayIndex + 2) + ';' +
           'background:' + color.bg + ';color:' + color.fg + ';border-left-color:' + color.border + '"' +
-          ' title="' + esc([course.name, meta, weekTextOf(course)].filter(Boolean).join(' ｜ ')) + '">' +
+          ' title="' + esc(title) + '">' +
           '<span class="c-name">' + esc(course.name) + '</span>' +
           (meta ? '<span class="c-meta">' + esc(meta) + '</span>' : '') +
           (weeks ? '<span class="c-weeks">' + esc(weeks) + '</span>' : '') +
@@ -191,12 +227,7 @@
 
     tbody.innerHTML = list.map(function (course) {
       var color = Store.courseColor(course);
-      var periods = cfg.periods;
-      var startLabel = periods[course.startPeriod - 1] ? periods[course.startPeriod - 1].label : '第' + course.startPeriod + '节';
-      var endLabel = periods[course.endPeriod - 1] ? periods[course.endPeriod - 1].label : '第' + course.endPeriod + '节';
-      var range = course.endPeriod > course.startPeriod
-        ? startLabel + ' - ' + endLabel.replace(/^第/, '')
-        : startLabel;
+      var range = unitRangeText(course, cfg);
       var active = isActiveThisWeek(course);
       return '<tr data-id="' + esc(course.id) + '">' +
         '<td><span class="name-cell"><i style="background:' + color.bg + '"></i>' + esc(course.name) +
@@ -267,18 +298,40 @@
     select.value = String(value);
   }
 
+  /* 课程按大节安排：下拉里只列大节（一个大节 = 两节 45 分钟的课）。
+     表单里选出来的是「第几大节」，存进数据时再换算成第几节到第几节。 */
+  function unitOptions(cfg) {
+    var periods = cfg.periods;
+    var count = Store.unitCount(periods);
+    var options = [];
+    for (var unit = 1; unit <= count; unit++) {
+      var first = periods[(unit - 1) * Store.UNIT_SIZE];
+      var last = periods[Math.min(unit * Store.UNIT_SIZE, periods.length) - 1];
+      var time = first && last && first.start && last.end ? '（' + first.start + '-' + last.end + '）' : '';
+      options.push({ value: unit, label: '第' + unit + '大节' + time });
+    }
+    return options;
+  }
+
+  /* 大节序号 → 节次范围 */
+  function unitToPeriods(unit, total) {
+    var count = Math.max(1, Math.floor(total / Store.UNIT_SIZE));
+    var index = Store.clampInt(unit, 1, count, 1);
+    return {
+      start: (index - 1) * Store.UNIT_SIZE + 1,
+      end: Math.min(index * Store.UNIT_SIZE, total)
+    };
+  }
+
   function buildFormOptions() {
     var cfg = config();
     fillSelect($('#fDay'), Store.DAY_LABELS.map(function (label, index) {
       return { value: index + 1, label: label };
     }), 1);
 
-    var periodOptions = cfg.periods.map(function (period, index) {
-      var time = period.start && period.end ? '（' + period.start + '-' + period.end + '）' : '';
-      return { value: index + 1, label: period.label + time };
-    });
-    fillSelect($('#fStart'), periodOptions, 1);
-    fillSelect($('#fEnd'), periodOptions, 1);
+    var options = unitOptions(cfg);
+    fillSelect($('#fStart'), options, 1);
+    fillSelect($('#fEnd'), options, 1);
 
     $('#fSwatches').innerHTML = Store.PALETTE.map(function (hex) {
       return '<button type="button" data-color="' + hex + '" style="background:' + hex + '" title="' + hex + '"></button>';
@@ -321,15 +374,14 @@
   function openDrawer(source) {
     var cfg = config();
     var course = null;
-    var prefill = { day: 1, startPeriod: 1, endPeriod: 1 };
+    var prefill = { day: 1, period: 1 };
 
     if (typeof source === 'string') {
       course = Store.getCourse(source);
       if (!course) return;
     } else if (source && typeof source === 'object') {
       prefill.day = source.day || 1;
-      prefill.startPeriod = source.period || 1;
-      prefill.endPeriod = prefill.startPeriod;
+      prefill.period = source.period || 1;
     }
 
     formState.id = course ? course.id : '';
@@ -342,11 +394,15 @@
     $('#fTeacher').value = course ? course.teacher : '';
     $('#fNote').value = course ? course.note : '';
 
-    /* 下拉选项会因为节次设置变化而重建，所以先建选项再回填值 */
+    /* 下拉选项会因为节次设置变化而重建，所以先建选项再回填值；
+       表单里填的是「第几大节」，由节次换算过来 */
     buildFormOptions();
+    var units = Store.unitCount(cfg.periods);
+    var startUnit = Math.min(Store.unitOf(course ? course.startPeriod : prefill.period), units);
+    var endUnit = Math.min(Store.unitOf(course ? course.endPeriod : prefill.period), units);
     $('#fDay').value = String(course ? course.day : prefill.day);
-    $('#fStart').value = String(course ? course.startPeriod : prefill.startPeriod);
-    $('#fEnd').value = String(course ? course.endPeriod : prefill.endPeriod);
+    $('#fStart').value = String(startUnit);
+    $('#fEnd').value = String(endUnit);
     $('#fWeeks').value = course ? (course.weeks === '全部' ? '' : course.weeks) : '';
     buildCopyDays(course ? course.day : prefill.day);
     updateColorUi();
@@ -375,9 +431,11 @@
       $('#fName').focus();
       return;
     }
-    var start = parseInt($('#fStart').value, 10);
-    var end = parseInt($('#fEnd').value, 10);
-    if (end < start) { var t = start; start = end; end = t; }
+    var startUnit = Store.clampInt($('#fStart').value, 1, Store.unitCount(cfg.periods), 1);
+    var endUnit = Store.clampInt($('#fEnd').value, 1, Store.unitCount(cfg.periods), 1);
+    if (endUnit < startUnit) { var swap = startUnit; startUnit = endUnit; endUnit = swap; }
+    var start = unitToPeriods(startUnit, cfg.periods.length).start;
+    var end = unitToPeriods(endUnit, cfg.periods.length).end;
 
     var weeksInput = Store.trim($('#fWeeks').value);
     var parsedWeeks = Store.parseWeeks(weeksInput, cfg.totalWeeks);
@@ -544,12 +602,12 @@
 
       if (dialog.courses.length) {
         html.push('<div class="preview-wrap"><table class="preview-table"><thead><tr>' +
-          '<th>课程</th><th>星期</th><th>节次</th><th>周次</th><th>地点</th><th>教师</th>' +
+          '<th>课程</th><th>星期</th><th>大节（节次）</th><th>周次</th><th>地点</th><th>教师</th>' +
           '</tr></thead><tbody>' +
           dialog.courses.slice(0, 10).map(function (course) {
             return '<tr><td>' + esc(course.name) + '</td>' +
               '<td>' + Store.DAY_LABELS[course.day - 1] + '</td>' +
-              '<td>' + course.startPeriod + (course.endPeriod > course.startPeriod ? '-' + course.endPeriod : '') + '</td>' +
+              '<td>' + esc(unitRangeText(course, cfg)) + '</td>' +
               '<td>' + esc(course.weeks) + '</td>' +
               '<td>' + esc(course.location) + '</td>' +
               '<td>' + esc(course.teacher) + '</td></tr>';
@@ -628,15 +686,26 @@
 
   /* ------------------------------------------------------------ 设置弹窗 */
 
+  /* "08:00" + 45 分钟 → "08:45" */
+  function addMinutes(text, minutes) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(Store.trim(text));
+    if (!m) return '';
+    var total = (parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + minutes) % (24 * 60);
+    if (total < 0) total += 24 * 60;
+    return Store.pad2(Math.floor(total / 60)) + ':' + Store.pad2(total % 60);
+  }
+
+  function periodRowHtml(label, start, end) {
+    return '<td style="width:32%"><input class="input" data-key="label" value="' + esc(label) + '"></td>' +
+      '<td><input class="input" data-key="start" value="' + esc(start) + '" placeholder="08:00"></td>' +
+      '<td><input class="input" data-key="end" value="' + esc(end) + '" placeholder="08:45"></td>' +
+      '<td style="width:44px"><button type="button" class="mini is-danger" data-remove>删</button></td>';
+  }
+
   function openSettings() {
     var cfg = config();
-    var rows = cfg.periods.map(function (period, index) {
-      return '<tr data-index="' + index + '">' +
-        '<td style="width:32%"><input class="input" data-key="label" value="' + esc(period.label) + '"></td>' +
-        '<td><input class="input" data-key="start" value="' + esc(period.start) + '" placeholder="08:00"></td>' +
-        '<td><input class="input" data-key="end" value="' + esc(period.end) + '" placeholder="08:45"></td>' +
-        '<td style="width:44px"><button type="button" class="mini is-danger" data-remove>删</button></td>' +
-      '</tr>';
+    var rows = cfg.periods.map(function (period) {
+      return '<tr>' + periodRowHtml(period.label, period.start, period.end) + '</tr>';
     }).join('');
 
     openModal(
@@ -650,7 +719,12 @@
         '<p class="field-label" style="margin-top:8px">每天节次</p>' +
         '<div class="preview-wrap"><table class="period-editor" id="periodEditor"><thead><tr>' +
           '<th>名称</th><th>开始</th><th>结束</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-        '<div style="margin-top:10px"><button type="button" class="mini" id="addPeriod">+ 增加一节</button></div>' +
+        '<div style="margin-top:10px;display:flex;gap:8px">' +
+          '<button type="button" class="mini" id="addUnit">+ 增加一个大节（两节）</button>' +
+          '<button type="button" class="mini" id="addPeriod">+ 增加一节</button>' +
+        '</div>' +
+        '<p class="field-hint">每两节 45 分钟的课算一个大节，课程按整个大节安排（大节内两节课之间课间 5 分钟，'
+        + '大节之间 15 分钟）。建议节次数量保持偶数，多出来的最后一节不会排课。</p>' +
       '</div>' +
       '<div class="modal-foot"><span class="spacer"></span>' +
         '<button type="button" class="btn" data-close>取消</button>' +
@@ -674,11 +748,23 @@
         var tbodyEl = $('#periodEditor tbody');
         var count = tbodyEl.children.length;
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td><input class="input" data-key="label" value="第' + (count + 1) + '节"></td>' +
-          '<td><input class="input" data-key="start" placeholder="08:00"></td>' +
-          '<td><input class="input" data-key="end" placeholder="08:45"></td>' +
-          '<td><button type="button" class="mini is-danger" data-remove>删</button></td>';
+        tr.innerHTML = periodRowHtml('第' + (count + 1) + '节', '', '');
         tbodyEl.appendChild(tr);
+        return;
+      }
+      /* 一次加两节，组成一个新的大节：与上一大节间隔 15 分钟，两节之间课间 5 分钟 */
+      if (event.target.closest('#addUnit')) {
+        var unitBody = $('#periodEditor tbody');
+        var lastRow = unitBody.lastElementChild;
+        var lastEnd = lastRow ? Store.trim(lastRow.querySelector('[data-key="end"]').value) : '';
+        var firstStart = lastEnd ? addMinutes(lastEnd, 15) : '';
+        var count2 = unitBody.children.length;
+        var starts = [firstStart, firstStart ? addMinutes(firstStart, 50) : ''];
+        starts.forEach(function (start, index) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = periodRowHtml('第' + (count2 + index + 1) + '节', start, start ? addMinutes(start, 45) : '');
+          unitBody.appendChild(tr);
+        });
         return;
       }
       if (event.target.closest('#saveSettings')) {
@@ -695,7 +781,9 @@
           periods: periods
         });
         closeModal();
-        toast('设置已更新');
+        toast(periods.length % Store.UNIT_SIZE
+          ? '设置已更新；节次数量是奇数，最后一节不会排课（课程按两节一个大节安排）'
+          : '设置已更新', periods.length % Store.UNIT_SIZE !== 0);
       }
     });
   }

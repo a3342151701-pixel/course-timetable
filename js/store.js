@@ -10,19 +10,69 @@
 
   var DAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
+  /* 默认作息：每天 5 个大节，每个大节连上两节 45 分钟的课。
+     大节内部两节课之间休息 5 分钟，大节与大节之间休息 15 分钟。
+     08:00 开始，晚上 18:00 开始，最后一节 19:35 下课。 */
   var DEFAULT_PERIODS = [
     { label: '第1节', start: '08:00', end: '08:45' },
-    { label: '第2节', start: '08:55', end: '09:40' },
-    { label: '第3节', start: '10:00', end: '10:45' },
-    { label: '第4节', start: '10:55', end: '11:40' },
+    { label: '第2节', start: '08:50', end: '09:35' },
+    { label: '第3节', start: '09:50', end: '10:35' },
+    { label: '第4节', start: '10:40', end: '11:25' },
     { label: '第5节', start: '14:00', end: '14:45' },
-    { label: '第6节', start: '14:55', end: '15:40' },
-    { label: '第7节', start: '16:00', end: '16:45' },
-    { label: '第8节', start: '16:55', end: '17:40' },
-    { label: '第9节', start: '19:00', end: '19:45' },
-    { label: '第10节', start: '19:55', end: '20:40' },
-    { label: '第11节', start: '20:50', end: '21:35' },
-    { label: '第12节', start: '21:45', end: '22:30' }
+    { label: '第6节', start: '14:50', end: '15:35' },
+    { label: '第7节', start: '15:50', end: '16:35' },
+    { label: '第8节', start: '16:40', end: '17:25' },
+    { label: '第9节', start: '18:00', end: '18:45' },
+    { label: '第10节', start: '18:50', end: '19:35' }
+  ];
+
+  /* 一个大节包含几节课：第 1-2 节是一个大节，第 3-4 节是一个大节，依此类推 */
+  var UNIT_SIZE = 2;
+
+  /* 历史版本的默认作息：只用来认出「用户从没改过节次」的老数据，认出就自动升级成上面的新作息。
+     以后每次调整默认时间，把上一版默认追加到这里就行。 */
+  var LEGACY_DEFAULT_PERIODS = [
+    /* 10 节版：上午/下午/晚上内部都是课间 5 分钟，晚上 18:00-18:45、19:00-19:45 */
+    [
+      { label: '第1节', start: '08:00', end: '08:45' },
+      { label: '第2节', start: '08:50', end: '09:35' },
+      { label: '第3节', start: '09:40', end: '10:25' },
+      { label: '第4节', start: '10:30', end: '11:15' },
+      { label: '第5节', start: '14:00', end: '14:45' },
+      { label: '第6节', start: '14:50', end: '15:35' },
+      { label: '第7节', start: '15:40', end: '16:25' },
+      { label: '第8节', start: '16:30', end: '17:15' },
+      { label: '第9节', start: '18:00', end: '18:45' },
+      { label: '第10节', start: '19:00', end: '19:45' }
+    ],
+    /* 10 节版：晚上 2 节 18:00-19:35 */
+    [
+      { label: '第1节', start: '08:00', end: '08:45' },
+      { label: '第2节', start: '08:50', end: '09:35' },
+      { label: '第3节', start: '09:40', end: '10:25' },
+      { label: '第4节', start: '10:30', end: '11:15' },
+      { label: '第5节', start: '14:00', end: '14:45' },
+      { label: '第6节', start: '14:50', end: '15:35' },
+      { label: '第7节', start: '15:40', end: '16:25' },
+      { label: '第8节', start: '16:30', end: '17:15' },
+      { label: '第9节', start: '18:00', end: '18:45' },
+      { label: '第10节', start: '18:50', end: '19:35' }
+    ],
+    /* 12 节版：晚上 4 节 19:00-22:30 */
+    [
+      { label: '第1节', start: '08:00', end: '08:45' },
+      { label: '第2节', start: '08:55', end: '09:40' },
+      { label: '第3节', start: '10:00', end: '10:45' },
+      { label: '第4节', start: '10:55', end: '11:40' },
+      { label: '第5节', start: '14:00', end: '14:45' },
+      { label: '第6节', start: '14:55', end: '15:40' },
+      { label: '第7节', start: '16:00', end: '16:45' },
+      { label: '第8节', start: '16:55', end: '17:40' },
+      { label: '第9节', start: '19:00', end: '19:45' },
+      { label: '第10节', start: '19:55', end: '20:40' },
+      { label: '第11节', start: '20:50', end: '21:35' },
+      { label: '第12节', start: '21:45', end: '22:30' }
+    ]
   ];
 
   /* 每种课程使用不同的背景色：按课程名稳定映射到调色板 */
@@ -310,10 +360,31 @@
     };
   }
 
+  /** 两组节次的名称和上下课时间是否完全一致 */
+  function periodsEqual(list, reference) {
+    if (!Array.isArray(list) || !Array.isArray(reference) || list.length !== reference.length) return false;
+    for (var i = 0; i < list.length; i++) {
+      var a = list[i] || {};
+      var b = reference[i];
+      if (trim(a.label) !== b.label || trim(a.start) !== b.start || trim(a.end) !== b.end) return false;
+    }
+    return true;
+  }
+
+  /** 这组节次是不是某个历史版本的默认作息（说明用户从没改过节次） */
+  function isLegacyPeriods(list) {
+    for (var i = 0; i < LEGACY_DEFAULT_PERIODS.length; i++) {
+      if (periodsEqual(list, LEGACY_DEFAULT_PERIODS[i])) return true;
+    }
+    return false;
+  }
+
   function mergeConfig(input) {
     var base = defaultConfig();
     var src = input || {};
     var periods = Array.isArray(src.periods) && src.periods.length ? src.periods : base.periods;
+    /* 老版本的默认作息自动换成新作息；用户自己调过的时间原样保留 */
+    if (isLegacyPeriods(periods)) periods = base.periods;
     return {
       totalWeeks: clampInt(src.totalWeeks, 1, 60, base.totalWeeks),
       currentWeek: clampInt(src.currentWeek, 1, 60, 1),
@@ -366,12 +437,29 @@
     }
   }
 
+  /* 课程按整个大节安排：只占第 4 节的课会被扩成第 3-4 节（整个大节），
+     跨大节的课（如第 4-5 节）会扩成第 3-6 节。 */
+  function snapPeriodsToUnits(start, end, total) {
+    total = clampInt(total, 1, 60, UNIT_SIZE);
+    var maxUnit = Math.max(1, Math.floor(total / UNIT_SIZE));
+    var first = Math.min(Math.max(1, Math.ceil(clampInt(start, 1, total, 1) / UNIT_SIZE)), maxUnit);
+    var last = Math.min(Math.max(first, Math.ceil(clampInt(end, first * UNIT_SIZE, total, first * UNIT_SIZE) / UNIT_SIZE)), maxUnit);
+    return { start: (first - 1) * UNIT_SIZE + 1, end: Math.min(last * UNIT_SIZE, total) };
+  }
+
+  /* 当前课表一共有几个完整的大节（节次数量为奇数时，多出来的最后一节不算大节） */
+  function unitCount(periods) {
+    var list = periods || state.config.periods;
+    return Math.max(1, Math.floor(list.length / UNIT_SIZE));
+  }
+
   function clampCourse(course, config) {
     var total = (config || state.config).periods.length;
     var next = normalizeCourse(course);
     next.day = clampInt(next.day, 1, 7, 1);
-    next.startPeriod = clampInt(next.startPeriod, 1, total, 1);
-    next.endPeriod = clampInt(next.endPeriod, next.startPeriod, total, next.startPeriod);
+    var snapped = snapPeriodsToUnits(next.startPeriod, next.endPeriod, total);
+    next.startPeriod = snapped.start;
+    next.endPeriod = snapped.end;
     return next;
   }
 
@@ -515,6 +603,7 @@
   /* -------------------------------------------------------- 示例数据 */
 
   function seedDemo() {
+    /* 课程按大节安排：每条课程都占满两节（一个大节）或它的整数倍 */
     state.courses = [
       { name: '高等数学', day: 1, startPeriod: 1, endPeriod: 2, weeks: '1-16', location: '三教 201', teacher: '张老师' },
       { name: '大学英语', day: 1, startPeriod: 3, endPeriod: 4, weeks: '1-16', location: '外语楼 105', teacher: 'Linda' },
@@ -523,10 +612,15 @@
       { name: '大学物理', day: 3, startPeriod: 3, endPeriod: 4, weeks: '1-16单周', location: '理科楼 402', teacher: '刘老师' },
       { name: '体育（羽毛球）', day: 3, startPeriod: 7, endPeriod: 8, weeks: '1-16', location: '体育馆', teacher: '陈老师' },
       { name: '数据结构', day: 4, startPeriod: 1, endPeriod: 2, weeks: '1-16', location: '三教 108', teacher: '王老师' },
-      { name: '思想政治', day: 4, startPeriod: 5, endPeriod: 5, weeks: '3-14', location: '文科楼 220', teacher: '赵老师' },
+      { name: '思想政治', day: 4, startPeriod: 5, endPeriod: 6, weeks: '3-14', location: '文科楼 220', teacher: '赵老师' },
       { name: '大学英语', day: 5, startPeriod: 3, endPeriod: 4, weeks: '1-16', location: '外语楼 105', teacher: 'Linda' }
-    ].map(function (c) { return normalizeCourse(c); });
+    ].map(function (c) { return clampCourse(c); });
     save();
+  }
+
+  /* 某个节次属于第几个大节（periodIndex 从 1 开始） */
+  function unitOf(periodIndex) {
+    return Math.floor((clampInt(periodIndex, 1, 60, 1) - 1) / UNIT_SIZE) + 1;
   }
 
   /* ------------------------------------------------------------- 导出 */
@@ -536,6 +630,10 @@
     DAY_LABELS: DAY_LABELS,
     DEFAULT_PERIODS: DEFAULT_PERIODS,
     PALETTE: PALETTE,
+    UNIT_SIZE: UNIT_SIZE,
+    unitOf: unitOf,
+    unitCount: unitCount,
+    snapPeriodsToUnits: snapPeriodsToUnits,
     state: state,
     onChange: onChange,
     emit: emit,
