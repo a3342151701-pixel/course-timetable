@@ -5,6 +5,12 @@
 
 **在线版：<https://a3342151701-pixel.github.io/course-timetable/>**（手机、平板、其他电脑直接打开即可，不用装任何东西）
 
+打不开 github.io 的网络（部分校园网、运营商网络）可以试试同一个仓库的镜像地址：
+<https://raw.githack.com/a3342151701-pixel/course-timetable/main/index.html>
+
+所有数据（课表、节次设置、配色）都只存在**访问者自己的浏览器**里（localStorage），
+不会上传到服务器、不会写回 GitHub，别人打开看到的仍然是仓库里的原版示例课表。
+
 ---
 
 ## 快速开始
@@ -134,7 +140,8 @@ Windows 首次运行会弹出防火墙询问，勾选「专用网络」并允许
 ## 发布与更新（GitHub Pages）
 
 在线版 <https://a3342151701-pixel.github.io/course-timetable/> 由仓库
-<https://github.com/a3342151701-pixel/course-timetable> 的 `main` 分支发布。
+<https://github.com/a3342151701-pixel/course-timetable> 的 `main` 分支根目录发布
+（仓库设置 → Pages → Source: `Deploy from a branch` / `main` / `/`）。
 改完代码后推上去，GitHub 会自动重新构建（大约 1 分钟生效）：
 
 ```bash
@@ -142,6 +149,20 @@ git add -A
 git commit -m "说明这次改了什么"
 git push
 ```
+
+同一份文件还可以通过只读镜像访问（github.io 被运营商或校园网挡住时用）：
+
+| 地址 | 说明 |
+| --- | --- |
+| `https://a3342151701-pixel.github.io/course-timetable/` | GitHub Pages 官方地址，推荐直接分享这个 |
+| `https://rawcdn.githack.com/a3342151701-pixel/course-timetable/main/index.html` | 第三方镜像（raw.githack.com 的 CDN 线路），首次打开会先出现一个英文提示页，点一下页面上的 `Open the page` 就进课表 |
+
+注意：jsDelivr、Statically 这类 CDN 会把 `.html` 当作 `text/plain` 返回（浏览器直接显示源码），
+所以它们适合引单个资源文件，不适合当作网页地址。
+
+写入方向只有一个：**本地 → GitHub**。网页是纯静态前端，代码里没有任何 `fetch` / `XMLHttpRequest`，
+运行时既不调用 GitHub API，也不会把数据写回仓库；每个访问者的课表都存在自己浏览器的 localStorage 里，
+刷新、换设备、清空缓存都只影响他自己，GitHub 上的原版（`main` 分支）始终不变。
 
 ---
 
