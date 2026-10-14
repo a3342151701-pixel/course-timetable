@@ -16,6 +16,7 @@ global.localStorage = {
   removeItem(key) { delete this._data[key]; }
 };
 
+require('../js/sheet.js');
 require('../js/store.js');
 require('../js/excel.js');
 
@@ -284,6 +285,39 @@ check('上一版默认升级为大节作息', Store.mergeConfig({ periods: legac
 check('上一版默认升级后第 3 节 09:50 开始', Store.mergeConfig({ periods: legacyEvening }).periods[2].start, '09:50');
 const customPeriods = [{ label: '第1节', start: '09:00', end: '09:45' }, { label: '第2节', start: '10:00', end: '10:45' }];
 check('用户自定义作息保留', Store.mergeConfig({ periods: customPeriods }).periods, customPeriods);
+
+section('周一到周日的日期（按使用者本地时间）');
+check('日期文本解析', Store.normalizeDateText('2026-09-07'), '2026-09-07');
+check('斜杠写法', Store.normalizeDateText('2026/9/7'), '2026-09-07');
+check('不存在的日期会被拒绝', Store.normalizeDateText('2026-02-30'), '');
+check('空值', Store.normalizeDateText(''), '');
+const dated = Store.mergeConfig({ startDate: '2026-09-07', totalWeeks: 16, currentWeek: 3 });
+check('第 1 周周一', Store.formatDate(Store.weekDates(1, dated)[0]), '2026-09-07');
+check('第 2 周周一', Store.formatDate(Store.weekDates(2, dated)[0]), '2026-09-14');
+check('第 3 周周一', Store.formatDate(Store.weekDates(3, dated)[0]), '2026-09-21');
+check('第 3 周周日', Store.formatDate(Store.weekDates(3, dated)[6]), '2026-09-27');
+check('每周都是 7 天', Store.weekDates(5, dated).length, 7);
+check('跨月的一周', [Store.formatDate(Store.weekDates(5, dated)[0]), Store.formatDate(Store.weekDates(5, dated)[6])], ['2026-10-05', '2026-10-11']);
+check('周一是星期一', Store.weekdayOf(Store.weekDates(1, dated)[0]), 1);
+check('周日是星期日', Store.weekdayOf(Store.weekDates(1, dated)[6]), 7);
+check('每一天都是连续的下一天', Store.weekDates(1, dated).every((date, index, list) => index === 0 || Store.formatDate(date) === Store.formatDate(Store.addDays(list[index - 1], 1))), true);
+check('第 1 周周一就是学期开始日期', Store.formatDate(Store.termStart(dated)), '2026-09-07');
+check('周次范围文本', Store.weekRangeText(3, dated), '9/21 - 9/27');
+check('跨年学期也能算', Store.formatDate(Store.weekDates(3, Store.mergeConfig({ startDate: '2026-12-28' }))[6]), '2027-01-17');
+
+section('没填学期开始日期时按今天推算');
+const auto = Store.mergeConfig({ totalWeeks: 16, currentWeek: 4 });
+check('当前周次里包含今天', Store.weekDates(4, auto).some((date) => Store.sameDay(date, Store.today())), true);
+check('第 1 周周一总是星期一', Store.weekdayOf(Store.weekDates(1, auto)[0]), 1);
+check('推出来的第 1 周周一', Store.formatDate(Store.weekDates(1, auto)[0]), Store.formatDate(Store.addDays(Store.mondayOf(Store.today()), -21)));
+Store.setConfig({ startDate: '', currentWeek: 1 });
+check('首次使用会自动补齐学期开始日期', Store.ensureTermStart(), true);
+check('自动补齐后第 1 周周一 = 本周周一', Store.formatDate(Store.weekDates(1, Store.state.config)[0]), Store.formatDate(Store.mondayOf(Store.today())));
+check('已经填过就不再改动', Store.ensureTermStart(), false);
+check('设置里能改学期开始日期', (function () {
+  Store.setConfig({ startDate: '2026-03-02' });
+  return Store.formatDate(Store.weekDates(1, Store.state.config)[0]);
+})(), '2026-03-02');
 
 console.log('\n通过 ' + passed + ' 项，失败 ' + failed + ' 项');
 process.exit(failed ? 1 : 0);

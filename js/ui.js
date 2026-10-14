@@ -101,6 +101,9 @@
     var conflicts = Store.findConflicts(courses(), cfg.totalWeeks);
     var todayRaw = new Date().getDay();
     var today = todayRaw === 0 ? 7 : todayRaw;
+    var todayDate = Store.today();
+    /* 当前这一周里，周一至周日各自对应的具体日期（按使用者的本地时间） */
+    var dates = Store.weekDates(cfg.currentWeek, cfg);
     var html = [];
 
     grid.style.gridTemplateColumns = 'var(--period-col) repeat(' + days.length + ', minmax(var(--day-col), 1fr))';
@@ -110,10 +113,15 @@
       var count = courses().filter(function (course) {
         return course.day === day && isActiveThisWeek(course);
       }).length;
+      var date = dates[day - 1];
+      var isToday = Store.sameDay(date, todayDate);
       html.push(
-        '<div class="head' + (day === today ? ' today' : '') + '" style="grid-row:1;grid-column:' + (index + 2) + '">' +
-          Store.DAY_LABELS[day - 1] +
-          '<small>' + (count ? count + ' 节课' : '—') + '</small>' +
+        '<div class="head' + (day === today ? ' today' : '') + '" style="grid-row:1;grid-column:' + (index + 2) + '"' +
+          ' title="' + esc(Store.DAY_LABELS[day - 1] + ' ' + Store.formatDate(date)) + '">' +
+          '<span class="head-day">' + Store.DAY_LABELS[day - 1] + '</span>' +
+          '<small class="head-date' + (isToday ? ' is-today' : '') + '">' + Store.formatMonthDay(date) +
+            (isToday ? ' 今天' : '') + '</small>' +
+          '<small class="head-count">' + (count ? count + ' 节课' : '—') + '</small>' +
         '</div>'
       );
     });
@@ -152,7 +160,7 @@
       var meta = [course.location, course.teacher].filter(Boolean).join(' · ');
       var weeks = (!Store.parseWeeks(course.weeks, cfg.totalWeeks).all) ? weekTextOf(course) : '';
       var conflictList = conflicts[course.id];
-      var title = [course.name, Store.DAY_LABELS[course.day - 1] + ' ' + unitRangeText(course, cfg),
+      var title = [course.name, Store.DAY_LABELS[course.day - 1] + '（' + Store.formatMonthDay(dates[course.day - 1]) + '） ' + unitRangeText(course, cfg),
         timeRangeText(course, cfg), meta, weekTextOf(course)].filter(Boolean).join(' ｜ ');
 
       html.push(
@@ -253,7 +261,8 @@
   function renderStats() {
     var cfg = config();
     var stats = Store.stats();
-    $('#stats').textContent = '第 ' + cfg.currentWeek + ' / ' + cfg.totalWeeks + ' 周 · 共 ' +
+    $('#stats').textContent = '第 ' + cfg.currentWeek + ' / ' + cfg.totalWeeks + ' 周（' +
+      Store.weekRangeText(cfg.currentWeek, cfg) + '）· 共 ' +
       stats.courseCount + ' 条课程（' + stats.subjectCount + ' 门）· 本周 ' + stats.thisWeekCount + ' 条 · 每周 ' +
       stats.entryPeriods + ' 节课';
   }
@@ -264,7 +273,11 @@
     slider.min = 1;
     slider.max = cfg.totalWeeks;
     slider.value = Math.min(cfg.currentWeek, cfg.totalWeeks);
-    $('#weekLabel').textContent = '第 ' + cfg.currentWeek + ' 周';
+    var label = $('#weekLabel');
+    label.textContent = '第 ' + cfg.currentWeek + ' 周';
+    /* 鼠标停在周次上可以看到这一周对应的日期范围 */
+    label.title = '第 ' + cfg.currentWeek + ' 周：' + Store.formatDate(Store.weekDates(cfg.currentWeek, cfg)[0]) +
+      ' 至 ' + Store.formatDate(Store.weekDates(cfg.currentWeek, cfg)[6]);
     $('#highlightWeek').checked = cfg.highlightWeek;
   }
 
@@ -716,6 +729,12 @@
           '<input class="input" id="setTotalWeeks" type="number" min="1" max="60" value="' + cfg.totalWeeks + '" style="width:90px">' +
           '<label class="check" style="color:var(--text-soft);border:0"><input type="checkbox" id="setWeekend"' + (cfg.showWeekend ? ' checked' : '') + '>显示周六、周日</label>' +
         '</div>' +
+        '<div class="option-row"><span class="option-label">第 1 周周一</span>' +
+          '<input class="input" id="setStartDate" type="date" value="' + esc(cfg.startDate || Store.autoTermStart(cfg)) + '" style="width:170px">' +
+          '<button type="button" class="mini" id="autoStartDate">按今天自动填</button>' +
+        '</div>' +
+        '<p class="field-hint">填上「第 1 周周一」的日期后，课表顶部星期一至星期日下面会显示对应的具体日期（按你设备的本地时间显示，今天会用彩色标出）。'
+        + '点「按今天自动填」会按今天所在的这一周对齐当前周次，改完记得保存。</p>' +
         '<p class="field-label" style="margin-top:8px">每天节次</p>' +
         '<div class="preview-wrap"><table class="period-editor" id="periodEditor"><thead><tr>' +
           '<th>名称</th><th>开始</th><th>结束</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
@@ -752,6 +771,12 @@
         tbodyEl.appendChild(tr);
         return;
       }
+      /* 按今天所在的这一周（对齐当前周次）算出第 1 周周一的日期 */
+      if (event.target.closest('#autoStartDate')) {
+        $('#setStartDate').value = Store.autoTermStart(config());
+        toast('已按今天推算：第 1 周周一 = ' + Store.autoTermStart(config()) + '，保存后生效');
+        return;
+      }
       /* 一次加两节，组成一个新的大节：与上一大节间隔 15 分钟，两节之间课间 5 分钟 */
       if (event.target.closest('#addUnit')) {
         var unitBody = $('#periodEditor tbody');
@@ -777,6 +802,7 @@
         });
         Store.setConfig({
           totalWeeks: Store.clampInt($('#setTotalWeeks').value, 1, 60, 16),
+          startDate: Store.normalizeDateText($('#setStartDate').value) || Store.autoTermStart(config()),
           showWeekend: $('#setWeekend').checked,
           periods: periods
         });
@@ -870,7 +896,8 @@
       if (!button) return;
       var act = button.dataset.act;
       moreMenu.hidden = true;
-      if (act === 'tpl-grid') { Excel.downloadTemplateGrid(); toast('已下载网格型模板'); }
+      if (act === 'rollcall') { window.open('rollcall.html', '_blank', 'noopener'); }
+      else if (act === 'tpl-grid') { Excel.downloadTemplateGrid(); toast('已下载网格型模板'); }
       else if (act === 'tpl-list') { Excel.downloadTemplateList(); toast('已下载列表型模板'); }
       else if (act === 'backup') { Excel.exportJson(); toast('已导出 JSON 备份'); }
       else if (act === 'restore') { $('#fileJson').click(); }
@@ -1005,6 +1032,8 @@
   function init() {
     var existing = Store.load();
     if (!existing) Store.seedDemo();
+    /* 第一次使用（或老数据里没有学期开始日期）时，按本地时间推算一个，之后日期就固定了 */
+    Store.ensureTermStart();
 
     Store.onChange(function () { render(); });
 

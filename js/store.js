@@ -121,6 +121,106 @@
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
+  /* ------------------------------------------------------------ 日期工具 */
+
+  /* 全部用本地时间构造 Date。不用 Date.parse('2026-09-07')，
+     那种写法按 UTC 解析，东八区会整体差一天。
+     weekday 用 1 = 周一 … 7 = 周日，和课程数据里的 day 保持一致。 */
+
+  /** 今天的日期（只有年月日，本地时间） */
+  function today() {
+    var now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+
+  /** '2026-09-07' / '2026/9/7' → Date；不合法返回 null */
+  function parseDateText(text) {
+    var m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(trim(text));
+    if (!m) return null;
+    var year = parseInt(m[1], 10);
+    var month = parseInt(m[2], 10);
+    var day = parseInt(m[3], 10);
+    var date = new Date(year, month - 1, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+    return date;
+  }
+
+  function formatDate(date) {
+    return date.getFullYear() + '-' + pad2(date.getMonth() + 1) + '-' + pad2(date.getDate());
+  }
+
+  /** 统一成 'YYYY-MM-DD'，认不出来就返回空字符串 */
+  function normalizeDateText(text) {
+    var date = parseDateText(text);
+    return date ? formatDate(date) : '';
+  }
+
+  /** 课表表头上显示的短日期，如 9/7 */
+  function formatMonthDay(date) {
+    return (date.getMonth() + 1) + '/' + date.getDate();
+  }
+
+  function addDays(date, days) {
+    var next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    next.setDate(next.getDate() + days);
+    return next;
+  }
+
+  function sameDay(a, b) {
+    return !!a && !!b &&
+      a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  /** 这一天所在周的周一（星期天算上一周的末尾） */
+  function mondayOf(date) {
+    var day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    var weekDay = day.getDay(); /* 0 = 星期天 */
+    day.setDate(day.getDate() + (weekDay === 0 ? -6 : 1 - weekDay));
+    return day;
+  }
+
+  /** 1 = 周一 … 7 = 周日 */
+  function weekdayOf(date) {
+    var weekDay = date.getDay();
+    return weekDay === 0 ? 7 : weekDay;
+  }
+
+  /** 按本地时间自动推算的学期开始日期（第 1 周周一）：
+      把「当前周次」对齐到本周，这样默认打开看到的就是本周的真实日期。 */
+  function autoTermStart(cfg) {
+    cfg = cfg || state.config;
+    return formatDate(addDays(mondayOf(today()), -(clampInt(cfg.currentWeek, 1, 60, 1) - 1) * 7));
+  }
+
+  /** 第 1 周周一的日期：设置里填了就用它，没填就按今天推算 */
+  function termStart(cfg) {
+    cfg = cfg || state.config;
+    return parseDateText(cfg.startDate) || parseDateText(autoTermStart(cfg));
+  }
+
+  /** 某一周的周一至周日（7 个 Date），日期按使用者的本地时间 */
+  function weekDates(week, cfg) {
+    cfg = cfg || state.config;
+    var monday = addDays(termStart(cfg), (clampInt(week, 1, 60, 1) - 1) * 7);
+    var out = [];
+    for (var i = 0; i < 7; i++) out.push(addDays(monday, i));
+    return out;
+  }
+
+  /** 某一周的日期范围，如 9/7 - 9/13 */
+  function weekRangeText(week, cfg) {
+    var dates = weekDates(week, cfg);
+    return formatMonthDay(dates[0]) + ' - ' + formatMonthDay(dates[6]);
+  }
+
+  /** 没填学期开始日期时，按本地时间推算一个并存下来（只做一次，之后日期就固定了） */
+  function ensureTermStart() {
+    if (parseDateText(state.config.startDate)) return false;
+    state.config.startDate = autoTermStart(state.config);
+    save();
+    return true;
+  }
+
   /* ------------------------------------------------------------ 周次解析 */
 
   function cnToNum(token) {
@@ -354,6 +454,7 @@
     return {
       totalWeeks: 16,
       currentWeek: 1,
+      startDate: '',
       showWeekend: true,
       highlightWeek: true,
       periods: DEFAULT_PERIODS.map(function (p) { return { label: p.label, start: p.start, end: p.end }; })
@@ -388,6 +489,7 @@
     return {
       totalWeeks: clampInt(src.totalWeeks, 1, 60, base.totalWeeks),
       currentWeek: clampInt(src.currentWeek, 1, 60, 1),
+      startDate: normalizeDateText(src.startDate),
       showWeekend: src.showWeekend !== false,
       highlightWeek: src.highlightWeek !== false,
       periods: periods.map(function (p, index) {
@@ -644,6 +746,20 @@
     trim: trim,
     pad2: pad2,
     clampInt: clampInt,
+    today: today,
+    parseDateText: parseDateText,
+    formatDate: formatDate,
+    normalizeDateText: normalizeDateText,
+    formatMonthDay: formatMonthDay,
+    addDays: addDays,
+    sameDay: sameDay,
+    mondayOf: mondayOf,
+    weekdayOf: weekdayOf,
+    autoTermStart: autoTermStart,
+    termStart: termStart,
+    weekDates: weekDates,
+    weekRangeText: weekRangeText,
+    ensureTermStart: ensureTermStart,
     normalizeCourse: normalizeCourse,
     mergeConfig: mergeConfig,
     clampCourse: clampCourse,

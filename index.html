@@ -34,6 +34,8 @@
       <div class="dropdown">
         <button class="btn" id="btnMore" type="button" aria-haspopup="true" aria-expanded="false">更多</button>
         <div class="dropdown-menu" id="moreMenu" hidden>
+          <button type="button" data-act="rollcall">随机点名（新页面）</button>
+          <hr>
           <button type="button" data-act="tpl-grid">下载网格型模板</button>
           <button type="button" data-act="tpl-list">下载列表型模板</button>
           <hr>
@@ -56,7 +58,7 @@
     <div class="grid-wrap">
       <div class="tt-grid" id="ttGrid"></div>
     </div>
-    <p class="hint">点击空白格子新增课程，点击已有课程可以修改、删除或复制到其他星期。课程按大节安排（一个大节 = 两节 45 分钟的课，如 14:00-15:35），每两节之间画了分隔线。顶部滑块用来切换当前周次，非本周的课程会自动变淡。</p>
+    <p class="hint">点击空白格子新增课程，点击已有课程可以修改、删除或复制到其他星期。课程按大节安排（一个大节 = 两节 45 分钟的课，如 14:00-15:35），每两节之间画了分隔线。顶部滑块用来切换当前周次，非本周的课程会自动变淡；每个星期下面的日期是这一周里对应的具体日期（按你设备的本地时间算），今天会用彩色标出并在后面写「今天」。</p>
   </section>
 
   <section id="viewList" class="view" hidden>
@@ -201,6 +203,7 @@
 <div class="toast-wrap" id="toastWrap"></div>
 
 <script src="vendor/xlsx.full.min.js"></script>
+<script src="js/sheet.js"></script>
 <script src="js/store.js"></script>
 <script src="js/excel.js"></script>
 <script src="js/ui.js"></script>
